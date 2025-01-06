@@ -99,5 +99,48 @@ GROUP BY
 ORDER BY 
     full_name;
 
+```
+Создал индекс CREATE INDEX idx_payment_date ON payment (payment_date);
+
+Поменял sql запрос:
 
 ```
+EXPLAIN ANALYZE
+SELECT 
+    c.customer_id,
+    f.title,
+    SUM(p.amount) AS total_amount
+FROM 
+    payment p
+INNER JOIN rental r ON r.rental_date = p.payment_date
+INNER JOIN inventory i ON i.inventory_id = r.inventory_id
+INNER JOIN film f ON f.film_id = i.film_id
+INNER JOIN customer c ON c.customer_id = r.customer_id
+WHERE 
+    p.payment_date >= '2005-07-30' 
+    AND p.payment_date < DATE_ADD('2005-07-30', INTERVAL 1 DAY)
+GROUP BY 
+    c.customer_id, f.title;
+
+```
+
+Стало побыстрей:
+
+```
+
+-> Table scan on <temporary>  (actual time=19.9..20.1 rows=634 loops=1)
+    -> Aggregate using temporary table  (actual time=19.8..19.8 rows=634 loops=1)
+        -> Nested loop inner join  (cost=1030 rows=661) (actual time=0.307..17.1 rows=642 loops=1)
+            -> Nested loop inner join  (cost=805 rows=661) (actual time=0.299..14.5 rows=642 loops=1)
+                -> Nested loop inner join  (cost=581 rows=661) (actual time=0.293..12.4 rows=642 loops=1)
+                    -> Nested loop inner join  (cost=349 rows=634) (actual time=0.265..3.7 rows=634 loops=1)
+                        -> Filter: ((r.rental_date >= TIMESTAMP'2005-07-30 00:00:00') and (r.rental_date < <cache>(('2005-07-30' + interval 1 day))))  (cost=127 rows=634) (actual time=0.253..1.44 rows=634 loops=1)
+                            -> Covering index range scan on r using rental_date over ('2005-07-30 00:00:00' <= rental_date < '2005-07-31 00:00:00')  (cost=127 rows=634) (actual time=0.25..0.977 rows=634 loops=1)
+                        -> Single-row covering index lookup on c using PRIMARY (customer_id=r.customer_id)  (cost=0.25 rows=1) (actual time=0.0031..0.00316 rows=1 loops=634)
+                    -> Index lookup on p using idx_payment_date (payment_date=r.rental_date)  (cost=0.261 rows=1.04) (actual time=0.0116..0.0133 rows=1.01 loops=634)
+                -> Single-row index lookup on i using PRIMARY (inventory_id=r.inventory_id)  (cost=0.24 rows=1) (actual time=0.00286..0.00294 rows=1 loops=642)
+            -> Single-row index lookup on f using PRIMARY (film_id=i.film_id)  (cost=0.24 rows=1) (actual time=0.00348..0.00355 rows=1 loops=642)
+
+```
+
+
